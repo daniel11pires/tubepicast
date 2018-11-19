@@ -10,7 +10,7 @@ Just connect your raspberry pi to your TV and control it with your mobile.
 ## Install youtube-dl
 Check [youtube-dl](https://youtube-dl.org/) page to install. On rapsberry pi just run:
 
-    pip install youtube-dl
+    pip install youtube_dl
 
 ## Run
 On the first time run:
