@@ -49,6 +49,6 @@ Usage help:
 * Delay on play/pause
 * Video ends and doesn´t play next
 
-## ToDo
+## TODO
 * play next on video end
 * Remove delay on video start

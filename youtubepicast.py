@@ -18,6 +18,8 @@ curList = []
 curIndex = 0
 playState = "1"
 currentVolume = "100"
+Instance = 0
+player = 0
 
 
 def main():
@@ -100,67 +102,76 @@ def decodeBindStream(r):
 
 
 def genericCmd(index, cmd, paramsList):
-	global currentCmdIndex, bindVals, curTime, curVideoId, curListId, ctt, curIndex, currentVolume, curVideo, curListVideos, curList, playState, startTime
+	global currentCmdIndex, bindVals, curTime, curVideoId, curListId, ctt, curIndex, currentVolume, curVideo, curListVideos, curList, playState, startTime, Instance, player
 
 	#dbgPrintln(index, cmd, paramsList)
 	if currentCmdIndex > 0 and index <= currentCmdIndex:
 		dbprintlng("Already seen " + str(index))
 
 	currentCmdIndex = index
-	if cmd == "noop":
-		print "noop"
-
-		try:
+	
+	try:
 
 
-			duration = str(curVideo["duration"]).split(":")
-			duration = int(duration[0])*60 + int(duration[1])
+		duration = str(curVideo["duration"]).split(":")
+		duration = int(duration[0])*60 + int(duration[1])
 
-			# start getting the real url of next video 45 seconds before the current one ends
-			if time.time() > (startTime + duration) - 45:
+		print player.get_time()
+		print player.get_length()
 
-				if curIndex+1 < len(curList) :
-					print "next"
-					curIndex += 1
-					curTime = 0
-					
-					curVideoId = curList[curIndex]
-					curVideo = curListVideos[curIndex]
-					
-					url = os.popen('youtube-dl -g -f mp4 https://www.youtube.com/watch?v='+curVideoId).read()
+		if player.get_time() >= player.get_length():
 
-					os.system('killall omxplayer.bin')
-					os.system('omxplayer -o hdmi "' + str(url.strip("\n")) + '" < /dev/null &')
+			if curIndex+1 < len(curList) :
+				print "next"
+				curIndex += 1
+				curTime = 0
+				
+				curVideoId = curList[curIndex]
+				curVideo = curListVideos[curIndex]
+				
+				video = pafy.new('https://www.youtube.com/watch?v='+curVideoId)
+				best = video.getbest()
+				playurl = best.url
 
-					startTime = time.time()
-					
-					postBind("nowPlaying", {
-						"videoId":      curVideoId,
-						"currentTime":  "0",
-						"ctt":          ctt,
-						"listId":       curListId,
-						"currentIndex": str(curIndex),
-						"state":        "1",
-					})
-					playState = "1"
-					postBind("onStateChange", {
-						"currentTime": "0",
-						"state":       "1",
-						"duration":    str(curVideo["duration"]),
-						"cpn":         "foo",
-					})
+				player.stop()
+				Instance = vlc.Instance()
+				player = Instance.media_player_new()
+				Media = Instance.media_new(playurl)
+				Media.get_mrl()
+				player.set_fullscreen(True)
+				player.set_media(Media)
+				player.play()
+
+				startTime = time.time()
+				
+				postBind("nowPlaying", {
+					"videoId":      curVideoId,
+					"currentTime":  "0",
+					"ctt":          ctt,
+					"listId":       curListId,
+					"currentIndex": str(curIndex),
+					"state":        "1",
+				})
+				playState = "1"
+				postBind("onStateChange", {
+					"currentTime": "0",
+					"state":       "1",
+					"duration":    str(curVideo["duration"]),
+					"cpn":         "foo",
+				})
 
 
-					print "video " + curVideoId
-				else:
-					postBind("nowPlaying", {})
-					print "stop"
+				print "video " + curVideoId
+			else:
+				postBind("nowPlaying", {})
+				player.stop()
+				print "stop"
 
 
-		except Exception as e:
-			pass
-
-	elif cmd == "c":
+	except Exception as e:
+		pass
+		
+	if cmd == "c":
 		bindVals['SID'] = str(paramsList[0])
 		print "option_sid " + str(paramsList[0])
 	elif cmd == "S":
@@ -206,10 +217,17 @@ def genericCmd(index, cmd, paramsList):
 
 		print "set playlist"
 
-		url = os.popen('youtube-dl -g -f mp4 https://www.youtube.com/watch?v='+curVideoId).read()
+		video = pafy.new('https://www.youtube.com/watch?v='+curVideoId)
+		best = video.getbest()
+		playurl = best.url
 
-		os.system('killall omxplayer.bin')
-		os.system('omxplayer -o hdmi "' + str(url.strip("\n")) + '" < /dev/null &')
+		Instance = vlc.Instance()
+		player = Instance.media_player_new()
+		Media = Instance.media_new(playurl)
+		Media.get_mrl()
+		player.set_fullscreen(True)
+		player.set_media(Media)
+		player.play()
 		
 		startTime = time.time()
 
@@ -254,7 +272,7 @@ def genericCmd(index, cmd, paramsList):
 
 	elif cmd == "play":
 		
-		omxdbus("org.mpris.MediaPlayer2.Player.PlayPause")
+		player.play()
 
 		playState = "1"
 		startTime = time.time() - curTime
@@ -270,7 +288,7 @@ def genericCmd(index, cmd, paramsList):
 
 	elif cmd == "pause":
 
-		omxdbus("org.mpris.MediaPlayer2.Player.PlayPause")
+		player.pause()
 		
 		playState = "2"
 		curTime = time.time() - startTime
@@ -286,7 +304,9 @@ def genericCmd(index, cmd, paramsList):
 
 		newTime = paramsList[0]["newTime"]
 		startTime = time.time() - float(newTime)
-		omxdbus('org.mpris.MediaPlayer2.Player.SetPosition objpath:/not/used int64:'+newTime+'000000')
+
+
+		player.set_position((float(newTime)*1000)/player.get_length())
 
 		postBind("onStateChange", {
 			"currentTime": newTime,
@@ -298,7 +318,7 @@ def genericCmd(index, cmd, paramsList):
 		print "seek to " + str(newTime)
 	elif cmd == "stopVideo":
 
-		omxdbus("org.mpris.MediaPlayer2.Player.Stop")
+		player.stop()
 		
 		postBind("nowPlaying", {})
 		print "stop"
@@ -313,10 +333,18 @@ def genericCmd(index, cmd, paramsList):
 			curVideoId = curList[curIndex]
 			curVideo = curListVideos[curIndex]
 			
-			url = os.popen('youtube-dl -g -f mp4 https://www.youtube.com/watch?v='+curVideoId).read()
+			video = pafy.new('https://www.youtube.com/watch?v='+curVideoId)
+			best = video.getbest()
+			playurl = best.url
 
-			os.system('killall omxplayer.bin')
-			os.system('omxplayer -o hdmi "' + str(url.strip("\n")) + '" < /dev/null &')
+			player.stop()
+			Instance = vlc.Instance()
+			player = Instance.media_player_new()
+			Media = Instance.media_new(playurl)
+			Media.get_mrl()
+			player.set_fullscreen(True)
+			player.set_media(Media)
+			player.play()
 			
 			startTime = time.time()
 
@@ -354,10 +382,18 @@ def genericCmd(index, cmd, paramsList):
 			curVideoId = curList[curIndex]
 			curVideo = curListVideos[curIndex]
 			
-			url = os.popen('youtube-dl -g -f mp4 https://www.youtube.com/watch?v='+curVideoId).read()
+			video = pafy.new('https://www.youtube.com/watch?v='+curVideoId)
+			best = video.getbest()
+			playurl = best.url
 
-			os.system('killall omxplayer.bin')
-			os.system('omxplayer -o hdmi "' + str(url.strip("\n")) + '" < /dev/null &')
+			player.stop()
+			Instance = vlc.Instance()
+			player = Instance.media_player_new()
+			Media = Instance.media_new(playurl)
+			Media.get_mrl()
+			player.set_fullscreen(True)
+			player.set_media(Media)
+			player.play()
 
 			startTime = time.time()
 			
@@ -385,12 +421,7 @@ def genericCmd(index, cmd, paramsList):
 	elif cmd == "setVolume":
 		currentVolume = paramsList[0]["volume"]
 
-		
-		volume = '1.0'
-		if int(currentVolume) < 100:
-			volume = '0.'+currentVolume
-
-		omxdbus('org.freedesktop.DBus.Properties.Set string:"org.mpris.MediaPlayer2.Player" string:"Volume" double:'+volume)
+		player.audio_set_volume(int(currentVolume))
 
 		print "set_volume " + currentVolume
 		postBind("onVolumeChanged", {"volume": currentVolume, "muted": "false"})
@@ -398,10 +429,6 @@ def genericCmd(index, cmd, paramsList):
 	else:
 		pass
 	return
-
-def omxdbus(dbus):
-	os.system('export DBUS_SESSION_BUS_ADDRESS=`cat /tmp/omxplayerdbus.${USER:-root}`; export DBUS_SESSION_BUS_PID=`cat /tmp/omxplayerdbus.${USER:-root}.pid`; dbus-send --print-reply=literal --session --reply-timeout=100 --dest=org.mpris.MediaPlayer2.omxplayer /org/mpris/MediaPlayer2 '+dbus+' >/dev/null')
-
 
 def postBind(sc, params):
 	global ofs, bindVals
@@ -430,7 +457,7 @@ def dbprintlng(line):
 
 
 if __name__=="__main__":
-	import argparse, requests, urllib, ast, time, os, copy
+	import argparse, requests, urllib, ast, time, os, copy, pafy, vlc
 
 	parser = argparse.ArgumentParser(description='Cast youtube to your tv')
 	parser.add_argument('-d', dest='debugLevel', type=int, default=0, help='Debug information level. 0 = off; 1 = full cmd info; 2 = timestamp prefix')
