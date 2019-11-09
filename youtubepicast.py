@@ -1,4 +1,5 @@
-debugLevel = 0
+import argparse, requests, urllib, ast, time, os, copy, pafy, vlc
+
 screenName = ""
 screenApp = ""
 screenId = ""
@@ -18,8 +19,8 @@ curList = []
 curIndex = 0
 playState = "1"
 currentVolume = "100"
-Instance = 0
-player = 0
+Instance = vlc.Instance()
+player = Instance.media_player_new()
 
 
 def main():
@@ -81,7 +82,7 @@ def main():
 
 
 def pairingCode(loungeToken, screenId):
-	global screenApp
+	global screenApp, screenName
 
 	code = requests.post("https://www.youtube.com/api/lounge/pairing/get_pairing_code?ctx=pair",
 		data = {
@@ -104,72 +105,60 @@ def decodeBindStream(r):
 def genericCmd(index, cmd, paramsList):
 	global currentCmdIndex, bindVals, curTime, curVideoId, curListId, ctt, curIndex, currentVolume, curVideo, curListVideos, curList, playState, startTime, Instance, player
 
-	#dbgPrintln(index, cmd, paramsList)
 	if currentCmdIndex > 0 and index <= currentCmdIndex:
-		dbprintlng("Already seen " + str(index))
+		print "Already seen " + str(index)
 
 	currentCmdIndex = index
-	
-	try:
 
+	# try:
 
-		duration = str(curVideo["duration"]).split(":")
-		duration = int(duration[0])*60 + int(duration[1])
+	# 	print player.get_time()
+	# 	print player.get_length()
+	# 	print player.get_state()
 
-		print player.get_time()
-		print player.get_length()
+	# 	if player.get_time() >= player.get_length() - 150 and player.get_time() > -1:
 
-		if player.get_time() >= player.get_length():
-
-			if curIndex+1 < len(curList) :
-				print "next"
-				curIndex += 1
-				curTime = 0
+	# 		if curIndex+1 < len(curList) :
+	# 			print "next"
+	# 			curIndex += 1
+	# 			curTime = 0
 				
-				curVideoId = curList[curIndex]
-				curVideo = curListVideos[curIndex]
+	# 			curVideoId = curList[curIndex]
+	# 			curVideo = curListVideos[curIndex]
 				
-				video = pafy.new('https://www.youtube.com/watch?v='+curVideoId)
-				best = video.getbest()
-				playurl = best.url
+	# 			playurl = getURL(curVideoId)
 
-				player.stop()
-				Instance = vlc.Instance()
-				player = Instance.media_player_new()
-				Media = Instance.media_new(playurl)
-				Media.get_mrl()
-				player.set_fullscreen(True)
-				player.set_media(Media)
-				player.play()
+	# 			player.stop()
+	# 			play(playurl)
 
-				startTime = time.time()
+	# 			startTime = time.time()
 				
-				postBind("nowPlaying", {
-					"videoId":      curVideoId,
-					"currentTime":  "0",
-					"ctt":          ctt,
-					"listId":       curListId,
-					"currentIndex": str(curIndex),
-					"state":        "1",
-				})
-				playState = "1"
-				postBind("onStateChange", {
-					"currentTime": "0",
-					"state":       "1",
-					"duration":    str(curVideo["duration"]),
-					"cpn":         "foo",
-				})
+	# 			postBind("nowPlaying", {
+	# 				"videoId":      curVideoId,
+	# 				"currentTime":  "0",
+	# 				"ctt":          ctt,
+	# 				"listId":       curListId,
+	# 				"currentIndex": str(curIndex),
+	# 				"state":        "1",
+	# 			})
+	# 			playState = "1"
+	# 			postBind("onStateChange", {
+	# 				"currentTime": "0",
+	# 				"state":       "1",
+	# 				"duration":    str(curVideo["duration"]),
+	# 				"cpn":         "foo",
+	# 			})
 
 
-				print "video " + curVideoId
-			else:
-				postBind("nowPlaying", {})
-				player.stop()
-				print "stop"
+	# 			print "video " + curVideoId
+	# 		else:
+	# 			postBind("nowPlaying", {})
+	# 			player.stop()
+	# 			print "stop"
 
 
-	except Exception as e:
-		pass
+	# except Exception as e:
+	# 	pass
 		
 	if cmd == "c":
 		bindVals['SID'] = str(paramsList[0])
@@ -217,17 +206,9 @@ def genericCmd(index, cmd, paramsList):
 
 		print "set playlist"
 
-		video = pafy.new('https://www.youtube.com/watch?v='+curVideoId)
-		best = video.getbest()
-		playurl = best.url
+		playurl = getURL(curVideoId)
 
-		Instance = vlc.Instance()
-		player = Instance.media_player_new()
-		Media = Instance.media_new(playurl)
-		Media.get_mrl()
-		player.set_fullscreen(True)
-		player.set_media(Media)
-		player.play()
+		play(playurl)
 		
 		startTime = time.time()
 
@@ -293,7 +274,7 @@ def genericCmd(index, cmd, paramsList):
 		playState = "2"
 		curTime = time.time() - startTime
 		postBind("onStateChange", {
-			"currentTime": str(curTime),
+			"currentTime": data["currentTime"],
 			"state":       "2",
 			"duration":    str(curVideo["duration"]),
 			"cpn":         "foo",
@@ -333,18 +314,10 @@ def genericCmd(index, cmd, paramsList):
 			curVideoId = curList[curIndex]
 			curVideo = curListVideos[curIndex]
 			
-			video = pafy.new('https://www.youtube.com/watch?v='+curVideoId)
-			best = video.getbest()
-			playurl = best.url
+			playurl = getURL(curVideoId)
 
 			player.stop()
-			Instance = vlc.Instance()
-			player = Instance.media_player_new()
-			Media = Instance.media_new(playurl)
-			Media.get_mrl()
-			player.set_fullscreen(True)
-			player.set_media(Media)
-			player.play()
+			play(playurl)
 			
 			startTime = time.time()
 
@@ -382,18 +355,10 @@ def genericCmd(index, cmd, paramsList):
 			curVideoId = curList[curIndex]
 			curVideo = curListVideos[curIndex]
 			
-			video = pafy.new('https://www.youtube.com/watch?v='+curVideoId)
-			best = video.getbest()
-			playurl = best.url
+			playurl = getURL(curVideoId)
 
 			player.stop()
-			Instance = vlc.Instance()
-			player = Instance.media_player_new()
-			Media = Instance.media_new(playurl)
-			Media.get_mrl()
-			player.set_fullscreen(True)
-			player.set_media(Media)
-			player.play()
+			play(playurl)
 
 			startTime = time.time()
 			
@@ -446,27 +411,71 @@ def postBind(sc, params):
 def getListInfo(listId):
 	return requests.get("https://www.youtube.com/list_ajax?style=json&action_get_list=1&list=" + listId).json()
 
+def getURL(curVideoId):
+	video = pafy.new('https://www.youtube.com/watch?v='+curVideoId)
+	best = video.getbest()
+	return best.url
 
-def dbprintlng(line):
-	global debugLevel
-	if debugLevel >= 1:
-		if debugLevel >= 2:
-			print "debug - " + str(time.strftime("%H:%M:%S")) + " - " + line
+def play(playurl):
+	global player
+	player.stop()
+	Media = Instance.media_new(playurl)
+	Media.get_mrl()
+	player.set_fullscreen(True)
+	player.set_media(Media)
+	player.play()
+
+	newpid = os.fork()
+	if newpid != 0:
+
+		while str(player.get_state()) != "State.Ended":
+			pass
+
+		if curIndex+1 < len(curList) :
+			print "next"
+			curIndex += 1
+			curTime = 0
+			
+			curVideoId = curList[curIndex]
+			curVideo = curListVideos[curIndex]
+			
+			playurl = getURL(curVideoId)
+
+			player.stop()
+			play(playurl)
+
+			startTime = time.time()
+			
+			postBind("nowPlaying", {
+				"videoId":      curVideoId,
+				"currentTime":  "0",
+				"ctt":          ctt,
+				"listId":       curListId,
+				"currentIndex": str(curIndex),
+				"state":        "1",
+			})
+			playState = "1"
+			postBind("onStateChange", {
+				"currentTime": "0",
+				"state":       "1",
+				"duration":    str(curVideo["duration"]),
+				"cpn":         "foo",
+			})
+
+			print "video " + curVideoId
 		else:
-			print "debug - " + line
-
+			postBind("nowPlaying", {})
+			player.stop()
+			print "stop"
 
 if __name__=="__main__":
-	import argparse, requests, urllib, ast, time, os, copy, pafy, vlc
 
 	parser = argparse.ArgumentParser(description='Cast youtube to your tv')
-	parser.add_argument('-d', dest='debugLevel', type=int, default=0, help='Debug information level. 0 = off; 1 = full cmd info; 2 = timestamp prefix')
-	parser.add_argument('-n', dest='screenName', type=str, default="python youtube TV", help='Display Name')
-	parser.add_argument('-i', dest='screenApp', type=str, default="python-youtube-TV-v1", help='App Name')
+	parser.add_argument('-n', dest='screenName', type=str, default="Raspberry pi youtube TV", help='Display Name')
+	parser.add_argument('-i', dest='screenApp', type=str, default="raspberry-pi-youtube-TV-v1", help='App Name')
 	parser.add_argument('-s', dest='screenId', type=str, default="", help='Screen ID (will be generated if empty)')
 
 	args = parser.parse_args()
-	debugLevel = args.debugLevel
 	screenName = args.screenName
 	screenApp = args.screenApp
 	screenId = args.screenId
